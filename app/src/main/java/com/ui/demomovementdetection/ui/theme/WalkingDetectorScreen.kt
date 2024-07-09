@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,29 +37,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.airbnb.lottie.compose.LottieAnimation
-import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
-import com.airbnb.lottie.compose.animateLottieCompositionAsState
-import com.airbnb.lottie.compose.rememberLottieComposition
 import com.ui.demomovementdetection.R
 import com.ui.demomovementdetection.sensor.WalkingDetector
 
 @Composable
 fun WalkingDetectorScreen(paddingValues: PaddingValues) {
-
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val walkingDetector = remember { WalkingDetector(context) }
     val sensorData by walkingDetector.sensorData.collectAsState()
     val isWalking by walkingDetector.isWalking.collectAsState()
-    var isLogging by remember { mutableStateOf(false) }
-    var savedFilePath by remember { mutableStateOf<String?>(null) }
-
 
     LaunchedEffect(Unit) {
         walkingDetector.startListening()
@@ -122,19 +115,12 @@ fun WalkingDetectorScreen(paddingValues: PaddingValues) {
             item {
                 WalkingStatusCard(isWalking)
             }
-
             item {
                 Spacer(modifier = Modifier.height(32.dp))
             }
-
-            item {
-                LoggingControl(walkingDetector)
-            }
-
             item {
                 Spacer(modifier = Modifier.height(16.dp))
             }
-
         }
     }
 }
@@ -162,13 +148,14 @@ fun WalkingStatusCard(isWalking: Boolean) {
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold
             )
-
             AnimatedVisibility(
                 visible = isWalking,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
-                AnimatedPreloader(modifier = Modifier.size(36.dp))
+                Icon(painter = painterResource(id = R.drawable.walking), contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp))
             }
         }
     }
@@ -224,6 +211,9 @@ fun SensorValue(label: String, value: Float) {
     }
 }
 
+// If you want to display animated icon instead of static....
+
+/*
 @Composable
 fun AnimatedPreloader(modifier: Modifier = Modifier) {
     val preloaderLottieComposition by rememberLottieComposition(
@@ -238,40 +228,9 @@ fun AnimatedPreloader(modifier: Modifier = Modifier) {
         isPlaying = true
     )
 
-
     LottieAnimation(
         composition = preloaderLottieComposition,
         progress = preloaderProgress,
         modifier = modifier
     )
-}
-
-@Composable
-fun LoggingControl(walkingDetector: WalkingDetector) {
-    var isLogging by remember { mutableStateOf(false) }
-    var savedFilePath by remember { mutableStateOf<String?>(null) }
-
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Button(
-            onClick = {
-                if (isLogging) {
-                    val savedFile = walkingDetector.stopLogging()
-                    savedFilePath = savedFile.absolutePath
-                    isLogging = false
-                } else {
-                    walkingDetector.startLogging()
-                    isLogging = true
-                    savedFilePath = null
-                }
-            }
-        ) {
-            Text(if (isLogging) "Save Logging" else "Start Logging")
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        savedFilePath?.let { path ->
-            Text("Log saved to: $path", style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
+}*/

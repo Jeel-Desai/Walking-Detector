@@ -5,16 +5,14 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import com.ui.demomovementdetection.util.LogManager
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.io.File
 import kotlin.math.abs
 import kotlin.math.sqrt
 
 class WalkingDetector(context: Context) {
-
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
@@ -26,17 +24,14 @@ class WalkingDetector(context: Context) {
     private val _isWalking = MutableStateFlow(false)
     val isWalking: StateFlow<Boolean> = _isWalking.asStateFlow()
 
-    private var lastAccelValues = FloatArray(3)
-    private var lastLinearAccelValues = FloatArray(3)
+    private var filteredAccelValues = FloatArray(3)
+    private var filteredGyroValues = FloatArray(3)
+    private var filteredLinearAccelValues = FloatArray(3)
     private var stepCount = 0
     private var lastStepTime = 0L
     private val stepTimings = ArrayDeque<Long>()
     private var verticalMovementSum = 0f
     private var consistentMovementCounter = 0
-
-    private val logManager = LogManager(context)
-
-
 
     private val listener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
@@ -45,73 +40,89 @@ class WalkingDetector(context: Context) {
                 Sensor.TYPE_GYROSCOPE -> processGyroscopeData(event.values)
                 Sensor.TYPE_LINEAR_ACCELERATION -> processLinearAccelerationData(event.values)
             }
-            logManager.logData(_sensorData.value, _isWalking.value)
         }
 
         override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
     }
 
+    private fun isWalking(): Boolean {
+        val isGyroConsistent = isGyroscopeConsistent()
+        val isLinearAccelConsistent = isLinearAccelerometerConsistent()
+
+        return isGyroConsistent && isLinearAccelConsistent
+    }
+
+    private fun isGyroscopeConsistent(): Boolean {
+        val (x, y, z) = filteredGyroValues
+        return x in GYRO_X_RANGE && y in GYRO_Y_RANGE && z in GYRO_Z_RANGE
+    }
+
+    private fun isLinearAccelerometerConsistent(): Boolean {
+        val (x, y, z) = filteredLinearAccelValues
+        return x in LINEAR_ACCEL_X_RANGE && y in LINEAR_ACCEL_Y_RANGE && z in LINEAR_ACCEL_Z_RANGE
+    }
 
     fun startListening() {
         sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_GAME)
         sensorManager.registerListener(listener, gyroscope, SensorManager.SENSOR_DELAY_GAME)
         sensorManager.registerListener(listener, linearAcceleration, SensorManager.SENSOR_DELAY_GAME)
-        logManager.startLogging()
     }
 
     fun stopListening() {
         sensorManager.unregisterListener(listener)
-        logManager.stopLogging()
-
     }
 
     private fun processAccelerometerData(values: FloatArray) {
-        val magnitude = calculateMagnitude(values)
-        _sensorData.value = _sensorData.value.copy(accelerometerData = values.clone(), accelMagnitude = magnitude)
+        filteredAccelValues = lowPassFilter(values, filteredAccelValues)
+        val magnitude = calculateMagnitude(filteredAccelValues)
+        _sensorData.value = _sensorData.value.copy(accelerometerData = filteredAccelValues.clone(), accelMagnitude = magnitude)
 
-        updateVerticalMovement(values[1] - SensorManager.GRAVITY_EARTH)
-        val isStep = detectStep(values, lastAccelValues, ACCEL_THRESHOLD)
+        updateVerticalMovement(filteredAccelValues[1] - SensorManager.GRAVITY_EARTH)
+        val isStep = detectStep(filteredAccelValues, ACCEL_THRESHOLD)
         updateWalkingState(isStep)
-        lastAccelValues = values.clone()
     }
 
     private fun processGyroscopeData(values: FloatArray) {
-        val magnitude = calculateMagnitude(values)
-        _sensorData.value = _sensorData.value.copy(gyroscopeData = values.clone(), gyroMagnitude = magnitude)
+        filteredGyroValues = lowPassFilter(values, filteredGyroValues)
+        val magnitude = calculateMagnitude(filteredGyroValues)
+        _sensorData.value = _sensorData.value.copy(gyroscopeData = filteredGyroValues.clone(), gyroMagnitude = magnitude)
     }
 
     private fun processLinearAccelerationData(values: FloatArray) {
-        val magnitude = calculateMagnitude(values)
-        _sensorData.value = _sensorData.value.copy(linearAccelerationData = values.clone(), linearAccelMagnitude = magnitude)
+        filteredLinearAccelValues = lowPassFilter(values, filteredLinearAccelValues)
+        val magnitude = calculateMagnitude(filteredLinearAccelValues)
+        _sensorData.value = _sensorData.value.copy(linearAccelerationData = filteredLinearAccelValues.clone(), linearAccelMagnitude = magnitude)
 
-        val isStep = detectStep(values, lastLinearAccelValues, LINEAR_ACCEL_THRESHOLD)
+        val isStep = detectStep(filteredLinearAccelValues, LINEAR_ACCEL_THRESHOLD)
         updateWalkingState(isStep)
-        lastLinearAccelValues = values.clone()
+    }
+
+    private fun lowPassFilter(input: FloatArray, output: FloatArray): FloatArray {
+        for (i in input.indices) {
+            output[i] = output[i] + ALPHA * (input[i] - output[i])
+        }
+        return output
     }
 
     private fun calculateMagnitude(values: FloatArray): Float {
         return sqrt(values[0] * values[0] + values[1] * values[1] + values[2] * values[2])
     }
 
-    private fun detectStep(currentValues: FloatArray, lastValues: FloatArray, threshold: Float): Boolean {
+    private fun detectStep(values: FloatArray, threshold: Float): Boolean {
         val currentTime = System.currentTimeMillis()
-        var stepDetected = false
+        val magnitude = calculateMagnitude(values)
 
-        for (i in currentValues.indices) {
-            val delta = abs(currentValues[i] - lastValues[i])
-            if (delta > threshold && (currentTime - lastStepTime) > MIN_STEP_INTERVAL) {
-                stepTimings.addLast(currentTime)
-                if (stepTimings.size > STEP_TIMING_WINDOW) {
-                    stepTimings.removeFirst()
-                }
-                stepCount++
-                lastStepTime = currentTime
-                stepDetected = true
-                break
+        if (magnitude > threshold && (currentTime - lastStepTime) > MIN_STEP_INTERVAL) {
+            stepTimings.addLast(currentTime)
+            if (stepTimings.size > STEP_TIMING_WINDOW) {
+                stepTimings.removeFirst()
             }
+            stepCount++
+            lastStepTime = currentTime
+            Log.d("WalkingDetector", "Step detected. Count: $stepCount")
+            return true
         }
-
-        return stepDetected
+        return false
     }
 
     private fun updateVerticalMovement(verticalAcceleration: Float) {
@@ -129,23 +140,18 @@ class WalkingDetector(context: Context) {
         val timeSinceLastStep = currentTime - lastStepTime
 
         if (isStep && isStepTimingConsistent() && consistentMovementCounter >= CONSISTENT_MOVEMENT_THRESHOLD) {
-            if (stepCount >= MIN_STEPS_FOR_WALKING) {
-                _isWalking.value = true
+            if (stepCount >= MIN_STEPS_FOR_WALKING && isWalking()) {
+                setWalkingState(true)
             }
         } else {
             if (_isWalking.value && timeSinceLastStep > QUICK_STOP_INTERVAL) {
-                _isWalking.value = false
-                stepCount = 0
-                stepTimings.clear()
-                consistentMovementCounter = 0
+                setWalkingState(false)
+                resetWalkingState()
             }
         }
 
-        // Reset step count if no steps for a while
         if (timeSinceLastStep > RESET_INTERVAL) {
-            stepCount = 0
-            stepTimings.clear()
-            consistentMovementCounter = 0
+            resetWalkingState()
         }
     }
 
@@ -156,28 +162,42 @@ class WalkingDetector(context: Context) {
         return intervals.all { abs(it - avgInterval) < MAX_INTERVAL_DEVIATION }
     }
 
-
-    fun startLogging() {
-        logManager.startLogging()
+    private fun setWalkingState(isWalking: Boolean) {
+        if (isWalking != _isWalking.value) {
+            _isWalking.value = isWalking
+            Log.d("WalkingDetector", "Walking state changed to $isWalking")
+        }
     }
 
-    fun stopLogging(): File {
-        return File(logManager.saveLogFile()!!.path!!)
+    private fun resetWalkingState() {
+        stepCount = 0
+        stepTimings.clear()
+        consistentMovementCounter = 0
     }
-
 
     companion object {
-        private const val ACCEL_THRESHOLD = 0.3f
-        private const val LINEAR_ACCEL_THRESHOLD = 0.2f
+        private const val ALPHA = 0.2f // Low-pass filter coefficient
+        private const val ACCEL_THRESHOLD = 10.5f
+        private const val LINEAR_ACCEL_THRESHOLD = 0.65f
         private const val MIN_STEP_INTERVAL = 250L // milliseconds
-        private const val MIN_STEPS_FOR_WALKING = 1.5
-        private const val QUICK_STOP_INTERVAL = 500L // milliseconds
-        private const val RESET_INTERVAL = 1000L // milliseconds
+        private const val MIN_STEPS_FOR_WALKING = 1.7
+        private const val QUICK_STOP_INTERVAL = 600L // milliseconds
+        private const val RESET_INTERVAL = 1500L // milliseconds
         private const val STEP_TIMING_WINDOW = 5
-        private const val MAX_INTERVAL_DEVIATION = 100L // milliseconds
-        private const val VERTICAL_MOVEMENT_THRESHOLD = 0.9f
+        private const val MAX_INTERVAL_DEVIATION = 150L // milliseconds
+        private const val VERTICAL_MOVEMENT_THRESHOLD = 1.2f
         private const val CONSISTENT_MOVEMENT_THRESHOLD = 3
+
+        // For High-pass filter
+
+        // Gyroscope ranges for each axis (rad/s)
+        private val GYRO_X_RANGE = -0.5f..1f
+        private val GYRO_Y_RANGE = -0.5f..1f
+        private val GYRO_Z_RANGE = -0.5f..1f
+
+        // Linear Accelerometer ranges for each axis (m/s^2)
+        private val LINEAR_ACCEL_X_RANGE = -0.5f..1f
+        private val LINEAR_ACCEL_Y_RANGE = -0.5f..1f
+        private val LINEAR_ACCEL_Z_RANGE = -0.5f..1f
     }
 }
-
-
