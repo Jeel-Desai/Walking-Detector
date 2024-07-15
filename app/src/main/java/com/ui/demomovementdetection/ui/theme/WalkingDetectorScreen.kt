@@ -87,16 +87,6 @@ fun WalkingDetectorScreen(paddingValues: PaddingValues) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             item {
-                SensorDataCard(
-                    "Accelerometer",
-                    sensorData.accelerometerData,
-                    sensorData.accelMagnitude
-                )
-            }
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-            item {
                 SensorDataCard("Gyroscope", sensorData.gyroscopeData, sensorData.gyroMagnitude)
             }
             item {
@@ -104,7 +94,7 @@ fun WalkingDetectorScreen(paddingValues: PaddingValues) {
             }
             item {
                 SensorDataCard(
-                    "Linear Acceleration",
+                    "Accelerometer",
                     sensorData.linearAccelerationData,
                     sensorData.linearAccelMagnitude
                 )

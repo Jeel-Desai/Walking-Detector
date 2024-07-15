@@ -178,26 +178,27 @@ class WalkingDetector(context: Context) {
     companion object {
         private const val ALPHA = 0.2f // Low-pass filter coefficient
         private const val ACCEL_THRESHOLD = 10.5f
-        private const val LINEAR_ACCEL_THRESHOLD = 0.65f
-        private const val MIN_STEP_INTERVAL = 250L // milliseconds
+        private const val LINEAR_ACCEL_THRESHOLD = 0.5f
+        private const val MIN_STEP_INTERVAL = 100L // milliseconds
         private const val MIN_STEPS_FOR_WALKING = 1.7
         private const val QUICK_STOP_INTERVAL = 600L // milliseconds
         private const val RESET_INTERVAL = 1500L // milliseconds
-        private const val STEP_TIMING_WINDOW = 5
+        private const val STEP_TIMING_WINDOW = 4
         private const val MAX_INTERVAL_DEVIATION = 150L // milliseconds
         private const val VERTICAL_MOVEMENT_THRESHOLD = 1.2f
         private const val CONSISTENT_MOVEMENT_THRESHOLD = 3
 
         // For High-pass filter
 
-        // Gyroscope ranges for each axis (rad/s)
-        private val GYRO_X_RANGE = -0.5f..1f
-        private val GYRO_Y_RANGE = -0.5f..1f
-        private val GYRO_Z_RANGE = -0.5f..1f
-
         // Linear Accelerometer ranges for each axis (m/s^2)
-        private val LINEAR_ACCEL_X_RANGE = -0.5f..1f
-        private val LINEAR_ACCEL_Y_RANGE = -0.5f..1f
-        private val LINEAR_ACCEL_Z_RANGE = -0.5f..1f
+        private val LINEAR_ACCEL_X_RANGE = -0.5f..0.6f
+        private val LINEAR_ACCEL_Y_RANGE = -0.5f..0.6f
+        private val LINEAR_ACCEL_Z_RANGE = -0.5f..0.6f
+
+        // Gyroscope ranges for each axis (rad/s)
+        private val GYRO_X_RANGE = -0.5f..0.55f
+        private val GYRO_Y_RANGE = -0.5f..0.55f
+        private val GYRO_Z_RANGE = -0.5f..0.55f
+
     }
 }
